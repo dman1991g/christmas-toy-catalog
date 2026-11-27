@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#8b2445">
+  <title>My Christmas Toy Catalog</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="Christmas Toy Catalog home">🎄 <span>My Christmas Toy Catalog</span></a>
+    <div class="top-actions">
+      <button class="pill-button" id="wishJump" type="button">❤️ My Wish List <span id="wishCount">0</span></button>
+      <button class="icon-button" id="soundToggle" type="button" aria-label="Toggle sounds" title="Toggle sounds">🔔</button>
+    </div>
+  </header>
+
+  <main class="catalog-shell">
+    <section class="catalog" aria-label="Interactive Christmas catalog">
+      <div class="page" id="page">
+        <div class="page-inner" id="pageInner" aria-live="polite"></div>
+      </div>
+      <nav class="page-controls" aria-label="Catalog pages">
+        <button class="nav-button" id="prevPage" type="button">← Previous</button>
+        <div class="page-status"><span id="pageNumber">1</span><span class="status-divider">/</span><span id="pageTotal">11</span></div>
+        <button class="nav-button next" id="nextPage" type="button">Next →</button>
+      </nav>
+      <p class="swipe-hint">👆 Swipe left or right to turn the pages</p>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="script.js"></script>
+</body>
+</html>
