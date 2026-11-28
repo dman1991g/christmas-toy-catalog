@@ -1,6 +1,8 @@
 
 // My Christmas Toy Catalog
-// Real retail product pictures added to all 24 toy listings.
+// Edit the products array to add or change toy ideas. Prices and store names are intentionally
+// not included in the child-facing catalog. Add parent shopping information in a separate
+// private parent page if you later choose to build one.
 
 const products = [
   { id:"ariel", category:"Princesses", name:"Ariel's Undersea Adventure", description:"Dive into a mermaid-sized make-believe adventure.", emoji:"🧜‍♀️", image:"https://images.mattel.net/image/upload/w_650%2Cf_auto%2Cc_scale/shop-us-prod/files/32387e8842aed31f5eade04789bcc0c265e784a4.jpg", retailMatch:"Disney Princess Ariel Sea Spa Shop playset" },
@@ -45,6 +47,8 @@ const pages = [
   { type:"activity-color" },
   { type:"activity-match" },
   { type:"activity-hunt" },
+  { type:"activity-tree" },
+  { type:"activity-workshop" },
   { type:"activity-draw" },
   { type:"wishlist" },
   { type:"goodbye" }
@@ -57,8 +61,17 @@ let colorComplete = false;
 let matchComplete = false;
 let huntComplete = [];
 let drawComplete = false;
-let colorRound = 0;
-let matchRound = 0;
+let matchCards = [];
+let matchOpen = [];
+let matchFound = [];
+let matchMoves = 0;
+let treeDecorations = [];
+let workshopSorted = [];
+let stars = Number(localStorage.getItem("christmasToyStars") || 0);
+let drawColor = "#d9365b";
+let drawSize = 6;
+let drawing = false;
+let lastPoint = null;
 let toastTimer;
 
 const pageInner = document.getElementById("pageInner");
@@ -74,19 +87,16 @@ function escapeHtml(value) {
     "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
   }[char]));
 }
-
 function saveWishList() {
   localStorage.setItem("christmasToyWishList", JSON.stringify(wishList));
   wishCount.textContent = wishList.length;
 }
-
 function showToast(message) {
   toast.textContent = message;
   toast.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.remove("show"), 1900);
 }
-
 function playSound() {
   if (!soundOn || !("AudioContext" in window || "webkitAudioContext" in window)) return;
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -102,7 +112,6 @@ function playSound() {
   oscillator.stop(ctx.currentTime + 0.14);
   oscillator.onended = () => ctx.close();
 }
-
 function toggleWish(id) {
   if (wishList.includes(id)) {
     wishList = wishList.filter(item => item !== id);
@@ -115,7 +124,6 @@ function toggleWish(id) {
   playSound();
   renderPage();
 }
-
 function productCard(product) {
   const selected = wishList.includes(product.id);
   return `<article class="product-card">
@@ -130,7 +138,6 @@ function productCard(product) {
     </button>
   </article>`;
 }
-
 function renderCover() {
   return `<div class="cover page-content">
     <div class="ribbon">THE MAGICAL CHRISTMAS EDITION</div>
@@ -142,7 +149,6 @@ function renderCover() {
     <div class="ribbon">LET THE CHRISTMAS FUN BEGIN!</div>
   </div>`;
 }
-
 function renderProducts(page) {
   const items = products.filter(p => p.category === page.key);
   return `<div class="page-content">
@@ -153,7 +159,6 @@ function renderProducts(page) {
     <p class="category-note">Tap the heart button on toys you'd love to add to your wish list! ❤️</p>
   </div>`;
 }
-
 function renderColor() {
   return `<div class="page-content">
     <div class="eyebrow">A little Christmas game</div><h2 class="page-title">🌈 Color Magic!</h2>
@@ -172,26 +177,35 @@ function renderColor() {
     </section>
   </div>`;
 }
-
+function makeMatchCards() {
+  const faces = ["🎄","🎁","⭐","🧸","🎅","❄️"];
+  matchCards = [...faces, ...faces].map((face, i) => ({id:i, face, pair:face}));
+  for (let i = matchCards.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [matchCards[i], matchCards[j]] = [matchCards[j], matchCards[i]];
+  }
+  matchOpen = [];
+  matchFound = [];
+  matchMoves = 0;
+  matchComplete = false;
+}
 function renderMatch() {
+  if (!matchCards.length) makeMatchCards();
   return `<div class="page-content">
-    <div class="eyebrow">A little Christmas game</div><h2 class="page-title">🎁 Picture Pairs</h2>
-    <p class="subtitle">Can you find the two matching presents?</p>
+    <div class="eyebrow">A little Christmas game</div>
+    <h2 class="page-title">🎁 Picture Pairs</h2>
+    <p class="subtitle">Turn over two cards and find the matching pictures!</p>
     <section class="activity-card">
-      <div class="big-emoji">🧠</div>
-      <h3>Find the matching pictures!</h3>
-      <div class="choice-row">
-        <button class="choice-button" data-pair="tree" aria-label="Christmas tree">🎄</button>
-        <button class="choice-button" data-pair="gift" aria-label="Present">🎁</button>
-        <button class="choice-button" data-pair="tree" aria-label="Christmas tree">🎄</button>
-        <button class="choice-button" data-pair="gift" aria-label="Present">🎁</button>
-      </div>
-      <p class="feedback" id="matchFeedback">${matchComplete ? "Hooray! You found the pairs! ⭐" : "Tap two pictures that are the same!"}</p>
-      <button class="action-button" id="matchAgain" type="button">Mix Them Up</button>
+      <div class="game-stats">⭐ ${stars} stars <span>Moves: ${matchMoves}</span></div>
+      <div class="memory-grid">${matchCards.map(card => {
+        const shown = matchOpen.includes(card.id) || matchFound.includes(card.id);
+        return `<button class="memory-card ${shown ? "flipped" : ""} ${matchFound.includes(card.id) ? "matched" : ""}" data-memory="${card.id}" ${shown || matchComplete ? "disabled" : ""} aria-label="${shown ? card.face : "Hidden picture"}">${shown ? card.face : "❔"}</button>`;
+      }).join("")}</div>
+      <p class="feedback" id="matchFeedback">${matchComplete ? "You found every pair! ⭐" : "Find all six matching pairs!"}</p>
+      <button class="action-button" id="matchAgain" type="button">Shuffle and Play Again</button>
     </section>
   </div>`;
 }
-
 function renderHunt() {
   const items = [
     {id:"tree",emoji:"🎄",label:"Find a Christmas tree"},
@@ -201,37 +215,82 @@ function renderHunt() {
     {id:"snow",emoji:"❄️",label:"Find something snowy"}
   ];
   return `<div class="page-content">
-    <div class="eyebrow">An adventure with Santa</div><h2 class="page-title">🔎 Christmas Treasure Hunt</h2>
+    <div class="eyebrow">An adventure with Santa</div>
+    <h2 class="page-title">🔎 Christmas Treasure Hunt</h2>
     <p class="subtitle">Ask a grown-up to help you find these things around your home!</p>
     <div class="hunt-list">${items.map(item => `<label class="hunt-item"><span style="font-size:1.8rem">${item.emoji}</span><span>${item.label}</span><input type="checkbox" data-hunt="${item.id}" ${huntComplete.includes(item.id) ? "checked" : ""}></label>`).join("")}</div>
     <p class="feedback" id="huntFeedback">${huntComplete.length === 5 ? "You found every treasure! Amazing! ⭐" : `${huntComplete.length} of 5 treasures found`}</p>
   </div>`;
 }
-
-function renderDraw() {
+function renderTree() {
+  const ornaments = ["🔴","🔵","🟡","💜","🎀","⭐","🎁"];
   return `<div class="page-content">
-    <div class="eyebrow">Make something wonderful</div><h2 class="page-title">🎨 Little Artist Studio</h2>
-    <p class="subtitle">Get your crayons and paper. Pick a picture to draw!</p>
-    <div class="product-grid">
-      <article class="activity-card"><div class="big-emoji">🎅</div><h3>Santa</h3><p>Draw Santa's happy face.</p></article>
-      <article class="activity-card"><div class="big-emoji">🦌</div><h3>Reindeer</h3><p>Draw a reindeer with big antlers.</p></article>
-      <article class="activity-card"><div class="big-emoji">🎄</div><h3>Christmas Tree</h3><p>Decorate a tree with ornaments.</p></article>
-      <article class="activity-card"><div class="big-emoji">👸</div><h3>Princess</h3><p>Draw a princess and a crown.</p></article>
-    </div>
-    <p class="feedback">${drawComplete ? "You are a Christmas artist! ⭐" : "When your picture is finished, tap the button!"}</p>
-    <div style="text-align:center"><button class="action-button" id="drawDone" type="button">${drawComplete ? "I made another picture!" : "I finished my picture!"}</button></div>
+    <div class="eyebrow">Decorate for Christmas</div>
+    <h2 class="page-title">🎄 Decorate the Tree!</h2>
+    <p class="subtitle">Tap an ornament to add it to your Christmas tree.</p>
+    <section class="activity-card">
+      <div class="tree-stage">
+        <div class="tree-top">⭐</div>
+        <div class="tree-shape">🎄</div>
+        <div class="tree-ornaments">${treeDecorations.map((o,i)=>`<span style="left:${12+(i*19)%76}%;top:${15+(i*23)%65}%">${o}</span>`).join("")}</div>
+      </div>
+      <div class="choice-row">${ornaments.map(o=>`<button class="choice-button" data-ornament="${o}" aria-label="Add ${o}">${o}</button>`).join("")}</div>
+      <p class="feedback">${treeDecorations.length >= 8 ? "Your tree looks amazing! ⭐" : `${treeDecorations.length} decorations added`}</p>
+      <button class="action-button" id="treeClear">Start a New Tree</button>
+    </section>
   </div>`;
 }
-
+function renderWorkshop() {
+  const tasks = [
+    {id:"ariel",emoji:"🧜‍♀️",label:"Princess gift",box:"👑"},
+    {id:"plush",emoji:"🧸",label:"Cuddly friend",box:"❤️"},
+    {id:"blocks",emoji:"🧱",label:"Building toy",box:"🧩"},
+    {id:"craft",emoji:"🎨",label:"Art supplies",box:"🎨"}
+  ];
+  return `<div class="page-content">
+    <div class="eyebrow">Santa needs your help</div>
+    <h2 class="page-title">🎅 Santa's Toy Workshop</h2>
+    <p class="subtitle">Tap a toy, then choose the right gift box!</p>
+    <section class="activity-card">
+      <div class="workshop-toys">${tasks.map(t=>`<button class="workshop-toy" data-toy="${t.id}" ${workshopSorted.includes(t.id)?"disabled":""}>${t.emoji}<small>${t.label}</small></button>`).join("")}</div>
+      <p class="feedback" id="workshopFeedback">${workshopSorted.length===4?"All the toys are ready for Santa! ⭐":"Choose a toy to pack:"}</p>
+      <div class="choice-row">${tasks.map(t=>`<button class="choice-button gift-box" data-box="${t.id}" aria-label="${t.label} box">${t.box}</button>`).join("")}</div>
+      <button class="action-button" id="workshopAgain">Reset the Workshop</button>
+    </section>
+  </div>`;
+}
+function renderDraw() {
+  const saved = localStorage.getItem("christmasToyDrawing");
+  return `<div class="page-content">
+    <div class="eyebrow">Make something wonderful</div>
+    <h2 class="page-title">🎨 Little Artist Studio</h2>
+    <p class="subtitle">Draw right on the page! Use your finger or an Apple Pencil.</p>
+    <section class="activity-card drawing-card">
+      <div class="drawing-tools">
+        <div class="palette">${["#d9365b","#f28c28","#f2c94c","#42a66c","#3185d8","#8b5ac7","#292929","#ffffff"].map(c=>`<button class="paint-color ${drawColor===c?"active":""}" data-paint="${c}" style="background:${c}" aria-label="Choose color ${c}"></button>`).join("")}</div>
+        <label class="brush-label">Brush <input id="brushSize" type="range" min="2" max="22" value="${drawSize}"></label>
+        <button class="tool-button" id="eraser">Eraser</button>
+        <button class="tool-button" id="clearDrawing">Clear</button>
+      </div>
+      <canvas id="drawingCanvas" width="900" height="520" aria-label="Drawing canvas"></canvas>
+      <div class="drawing-actions">
+        <button class="action-button" id="saveDrawing">Save My Picture</button>
+        <button class="tool-button" id="newDrawing">New Picture</button>
+      </div>
+      ${saved?`<div class="saved-art"><strong>My saved picture</strong><img src="${saved}" alt="Your saved drawing"></div>`:""}
+      <p class="feedback">${drawComplete?"You're a Christmas artist! ⭐":"Make a picture and save it when you're done."}</p>
+    </section>
+  </div>`;
+}
 function renderWishList() {
   const selected = products.filter(p => wishList.includes(p.id));
   return `<div class="page-content">
-    <div class="eyebrow">A page just for you</div><h2 class="page-title">❤️ My Christmas Wish List</h2>
+    <div class="eyebrow">A page just for you</div>
+    <h2 class="page-title">❤️ My Christmas Wish List</h2>
     <p class="subtitle">Here are the toys you picked!</p>
     ${selected.length ? `<div class="wish-list">${selected.map(p => `<div class="wish-row"><span class="wish-image" style="width:64px;height:64px;flex:0 0 64px;display:grid;place-items:center;overflow:hidden;border-radius:10px;background:#fff5f8"><img src="${escapeHtml(p.image)}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:contain" onerror="this.style.display='none';this.parentElement.textContent='${p.emoji}';this.parentElement.style.fontSize='2rem'"></span><span>${escapeHtml(p.name)}</span><button class="wish-button selected" data-wish="${p.id}" type="button">Remove</button></div>`).join("")}</div>` : `<div class="empty-state"><div class="big-emoji">🎁</div>Your wish list is waiting for some Christmas magic!<br>Go back and pick some toys you love.</div>`}
   </div>`;
 }
-
 function renderGoodbye() {
   return `<div class="cover page-content">
     <div class="cover-art">🎅✨🎄</div>
@@ -242,7 +301,51 @@ function renderGoodbye() {
     <button class="action-button" id="startOver" type="button" style="background:#f4c95d;color:#53340a">Read the Catalog Again</button>
   </div>`;
 }
-
+function awardStar(message) {
+  stars += 1;
+  localStorage.setItem("christmasToyStars", String(stars));
+  showToast(message || "You earned a star! ⭐");
+  playSound();
+}
+function setupDrawingCanvas() {
+  const canvas = document.getElementById("drawingCanvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  const saved = localStorage.getItem("christmasToyDrawing");
+  if (saved) {
+    const img = new Image();
+    img.onload = () => ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    img.src = saved;
+  }
+  const point = e => {
+    const r=canvas.getBoundingClientRect();
+    return {x:(e.clientX-r.left)*canvas.width/r.width,y:(e.clientY-r.top)*canvas.height/r.height};
+  };
+  canvas.addEventListener("pointerdown", e=>{
+    drawing=true;
+    lastPoint=point(e);
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener("pointermove", e=>{
+    if(!drawing)return;
+    const p=point(e);
+    ctx.beginPath();
+    ctx.moveTo(lastPoint.x,lastPoint.y);
+    ctx.lineTo(p.x,p.y);
+    ctx.strokeStyle=drawColor;
+    ctx.lineWidth=drawSize*canvas.width/canvas.getBoundingClientRect().width;
+    ctx.lineCap="round";
+    ctx.lineJoin="round";
+    ctx.stroke();
+    lastPoint=p;
+  });
+  const stop=()=>{drawing=false;lastPoint=null;};
+  canvas.addEventListener("pointerup",stop);
+  canvas.addEventListener("pointercancel",stop);
+  canvas.addEventListener("pointerleave",stop);
+}
 function renderPage() {
   const page = pages[currentPage];
   let html = "";
@@ -251,10 +354,11 @@ function renderPage() {
   if (page.type === "activity-color") html = renderColor();
   if (page.type === "activity-match") html = renderMatch();
   if (page.type === "activity-hunt") html = renderHunt();
+  if (page.type === "activity-tree") html = renderTree();
+  if (page.type === "activity-workshop") html = renderWorkshop();
   if (page.type === "activity-draw") html = renderDraw();
   if (page.type === "wishlist") html = renderWishList();
   if (page.type === "goodbye") html = renderGoodbye();
-
   pageInner.innerHTML = html;
   pageInner.classList.remove("turning");
   void pageInner.offsetWidth;
@@ -264,14 +368,13 @@ function renderPage() {
   prevPage.disabled = currentPage === 0;
   nextPage.disabled = currentPage === pages.length - 1;
   wishCount.textContent = wishList.length;
+  setupDrawingCanvas();
 }
-
 function goToPage(index) {
   currentPage = Math.max(0, Math.min(pages.length - 1, index));
   renderPage();
   playSound();
 }
-
 function handlePageClick(event) {
   const wishButton = event.target.closest("[data-wish]");
   if (wishButton) {
@@ -279,84 +382,122 @@ function handlePageClick(event) {
     return;
   }
 
-  if (event.target.closest("#colorAgain")) {
-    colorComplete = false;
-    renderPage();
+  if (event.target.closest("#colorAgain")) { colorComplete = false; renderPage(); return; }
+  if (event.target.closest("#matchAgain")) { makeMatchCards(); renderPage(); return; }
+  if (event.target.closest("#treeClear")) { treeDecorations=[]; renderPage(); return; }
+  if (event.target.closest("#workshopAgain")) { workshopSorted=[]; renderPage(); return; }
+  if (event.target.closest("#clearDrawing") || event.target.closest("#newDrawing")) {
+    const c=document.getElementById("drawingCanvas");
+    if(c){const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);}
     return;
   }
-
-  if (event.target.closest("#matchAgain")) {
-    matchComplete = false;
-    renderPage();
+  if (event.target.closest("#saveDrawing")) {
+    const c=document.getElementById("drawingCanvas");
+    if(c){
+      localStorage.setItem("christmasToyDrawing",c.toDataURL("image/png"));
+      drawComplete=true;
+      awardStar("Your picture is saved! ⭐");
+      renderPage();
+    }
     return;
   }
-
-  if (event.target.closest("#drawDone")) {
-    drawComplete = true;
-    renderPage();
-    showToast("Wonderful artwork! 🎨");
-    return;
-  }
-
-  if (event.target.closest("#startOver")) {
-    goToPage(0);
-    return;
-  }
+  if (event.target.closest("#eraser")) { drawColor="#ffffff"; return; }
+  if (event.target.closest("#startOver")) { goToPage(0); return; }
 
   const colorButton = event.target.closest("[data-color]");
   if (colorButton) {
     const feedback = document.getElementById("colorFeedback");
     if (colorButton.dataset.color === "blue") {
+      if(!colorComplete) awardStar("You found blue! ⭐");
       colorComplete = true;
       feedback.textContent = "You found blue! You are a color star! ⭐";
-      showToast("Great job! ⭐");
-      playSound();
     } else {
       feedback.textContent = "Good try! Look for the blue circle. 💙";
     }
     return;
   }
 
-  const pairButton = event.target.closest("[data-pair]");
-  if (pairButton) {
-    const buttons = [...pageInner.querySelectorAll("[data-pair]")];
-    buttons.forEach(button => button.disabled = true);
-    matchComplete = true;
-    document.getElementById("matchFeedback").textContent = "You found the matching pictures! Great job! ⭐";
-    showToast("You did it! 🎉");
-    playSound();
+  const memoryButton = event.target.closest("[data-memory]");
+  if (memoryButton && matchOpen.length < 2) {
+    const id=Number(memoryButton.dataset.memory);
+    matchOpen.push(id);
+    renderPage();
+    if(matchOpen.length===2){
+      matchMoves++;
+      const [a,b]=matchOpen;
+      if(matchCards.find(c=>c.id===a).pair===matchCards.find(c=>c.id===b).pair){
+        matchFound.push(a,b);
+        matchOpen=[];
+        if(matchFound.length===matchCards.length){
+          matchComplete=true;
+          awardStar("All the pairs found! ⭐");
+        }
+        renderPage();
+      } else {
+        setTimeout(()=>{matchOpen=[];renderPage();},850);
+      }
+    }
+    return;
+  }
+
+  const ornament=event.target.closest("[data-ornament]");
+  if(ornament){
+    treeDecorations.push(ornament.dataset.ornament);
+    if(treeDecorations.length===8)awardStar("Beautiful Christmas tree! ⭐");
+    renderPage();
+    return;
+  }
+
+  const toy=event.target.closest("[data-toy]");
+  if(toy){
+    pageInner.dataset.selectedToy=toy.dataset.toy;
+    document.getElementById("workshopFeedback").textContent="Now choose its matching gift box!";
+    pageInner.querySelectorAll(".workshop-toy").forEach(b=>b.classList.toggle("chosen",b===toy));
+    return;
+  }
+
+  const box=event.target.closest("[data-box]");
+  if(box){
+    const selected=pageInner.dataset.selectedToy;
+    if(!selected){
+      document.getElementById("workshopFeedback").textContent="Pick a toy first!";
+      return;
+    }
+    if(selected===box.dataset.box){
+      workshopSorted.push(selected);
+      delete pageInner.dataset.selectedToy;
+      renderPage();
+      if(workshopSorted.length===4)awardStar("Santa's workshop is ready! ⭐");
+    } else {
+      document.getElementById("workshopFeedback").textContent="Try another box! You can do it!";
+    }
+    return;
+  }
+
+  const paint=event.target.closest("[data-paint]");
+  if(paint){
+    drawColor=paint.dataset.paint;
+    pageInner.querySelectorAll("[data-paint]").forEach(b=>b.classList.toggle("active",b===paint));
     return;
   }
 
   const huntInput = event.target.closest("[data-hunt]");
   if (huntInput) {
     const id = huntInput.dataset.hunt;
-    huntComplete = huntInput.checked
-      ? [...new Set([...huntComplete, id])]
-      : huntComplete.filter(x => x !== id);
-
+    huntComplete = huntInput.checked ? [...new Set([...huntComplete, id])] : huntComplete.filter(x => x !== id);
     const feedback = document.getElementById("huntFeedback");
-    feedback.textContent = huntComplete.length === 5
-      ? "You found every treasure! Amazing! ⭐"
-      : `${huntComplete.length} of 5 treasures found`;
-
-    if (huntComplete.length === 5) {
-      showToast("Santa's treasure hunt complete! 🎅");
-      playSound();
-    }
+    feedback.textContent = huntComplete.length === 5 ? "You found every treasure! Amazing! ⭐" : `${huntComplete.length} of 5 treasures found`;
+    if (huntComplete.length === 5) awardStar("Santa's treasure hunt complete! 🎅⭐");
   }
 }
-
 pageInner.addEventListener("click", handlePageClick);
 pageInner.addEventListener("change", handlePageClick);
-
+pageInner.addEventListener("input", event=>{
+  if(event.target.id==="brushSize")drawSize=Number(event.target.value);
+});
 prevPage.addEventListener("click", () => goToPage(currentPage - 1));
 nextPage.addEventListener("click", () => goToPage(currentPage + 1));
-
-document.getElementById("wishJump").addEventListener("click", () =>
-  goToPage(pages.findIndex(p => p.type === "wishlist"))
-);
-
+document.getElementById("wishJump").addEventListener("click", () => goToPage(pages.findIndex(p => p.type === "wishlist")));
 document.getElementById("soundToggle").addEventListener("click", event => {
   soundOn = !soundOn;
   event.currentTarget.textContent = soundOn ? "🔊" : "🔔";
@@ -364,19 +505,15 @@ document.getElementById("soundToggle").addEventListener("click", event => {
 });
 
 // Touch swipe navigation, while allowing normal vertical scrolling.
-let touchStartX = 0;
-let touchStartY = 0;
+let touchStartX = 0, touchStartY = 0;
 const pageElement = document.getElementById("page");
-
 pageElement.addEventListener("touchstart", event => {
   touchStartX = event.changedTouches[0].clientX;
   touchStartY = event.changedTouches[0].clientY;
 }, { passive:true });
-
 pageElement.addEventListener("touchend", event => {
   const dx = event.changedTouches[0].clientX - touchStartX;
   const dy = event.changedTouches[0].clientY - touchStartY;
-
   if (Math.abs(dx) > 65 && Math.abs(dx) > Math.abs(dy) * 1.25) {
     goToPage(currentPage + (dx < 0 ? 1 : -1));
   }
